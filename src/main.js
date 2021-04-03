@@ -1,11 +1,21 @@
 const events = require("events");
 const { Command } = require("commander");
 
+const { syncTimer } = require("./helpers");
+
 const { getPairPrice, getPairKLine } = require("./api");
 
 const emitter = new events.EventEmitter();
 
-let historicalData;
+let historicalData,
+  nextDataPoint,
+  lastPairPrice,
+  currentValues,
+  getPairKLinePromise,
+  dataDate,
+  previousPrice,
+  tradePlaced,
+  typeOfTrade;
 let interval = "3m"; // 3 minutes
 let period = 2;
 let pair = "XMRBTC";
@@ -73,41 +83,104 @@ for (let i = 0; i < nPoints; i++) {
 }
 
 if (startTime) {
-  getPairKLine({
+  getPairKLinePromise = getPairKLine({
     symbol: pair,
     interval: interval,
     startTime: startTime,
     endTime: endTime,
-  })
-    .then(({ data }) => {
-      console.log(data);
-      emitter.emit("timeEvent");
-      const mainInterval = setInterval(() => {
-        emitter.emit("timeEvent");
-      }, period * 1000);
-    })
-    .catch((err) => {});
+  });
+  // .then(({ data }) => {
+  //   console.log(data);
+  //   historicalData = data;
+  //   // emitter.emit("timeEvent");
+  //   // const mainInterval = setInterval(() => {
+  //   //   emitter.emit("timeEvent");
+  //   // }, period * 1000);
+  // })
+  // .catch((err) => {
+  //   console.log("### ERROR ###", err);
+  // });
 }
+
+Promise.all([getPairKLinePromise]).then((data) => {
+  historicalData = data[0].data;
+  while (true) {
+    emitter.emit("timeEvent");
+
+    if (!startTime) {
+      syncTimer(2);
+    }
+  }
+});
 
 ////////////////////////////////////////////////////////////////
 emitter.on("timeEvent", async () => {
   const date = new Date();
-
   try {
-    const { data } = await getPairPrice(pair);
+    if (startTime && historicalData) {
+      // console.log("### historicalData ###", historicalData);
+      nextDataPoint = historicalData.shift();
+      // console.log("### nextDataPoint ###", nextDataPoint);
+      if (!nextDataPoint) process.exit();
+      lastPairPrice = parseFloat(nextDataPoint[4]);
+    } else if (startTime && !historicalData) {
+      process.exit();
+    } else {
+      console.log("### waiting for request... ###");
+      const { data } = await getPairPrice(pair);
+      lastPairPrice = parseFloat(data.price);
+    }
 
     // console.log(data);
-    prices.push(parseFloat(data.price));
+    prices.push(lastPairPrice);
     prices.shift();
     currentMovingAverage = prices.reduce((a, b) => a + b, 0) / nPoints;
+    previousPrice = prices[prices.length - 2];
 
-    process.stdout.write(`\n${date.getDate()}-`);
+    if (!tradePlaced) {
+      // console.log(
+      //   "### hit ###",
+      //   lastPairPrice,
+      //   currentMovingAverage,
+      //   previousPrice
+      // );
+
+      if (
+        lastPairPrice > currentMovingAverage &&
+        lastPairPrice < previousPrice
+      ) {
+        console.log("### SELL ORDER ###");
+        tradePlaced = true;
+        typeOfTrade = "short";
+      } else if (
+        lastPairPrice < currentMovingAverage &&
+        lastPairPrice > previousPrice
+      ) {
+        console.log("### BUY ORDER ###");
+        tradePlaced = true;
+        typeOfTrade = "long";
+      }
+    } else if (typeOfTrade === "short") {
+      if (lastPairPrice < currentMovingAverage) {
+        console.log("### EXIT TRADE ###");
+        tradePlaced = false;
+        typeOfTrade = "";
+      } else if (typeOfTrade === "long") {
+        if (lastPairPrice > currentMovingAverage) {
+          console.log("### EXIT TRADE ###");
+          tradePlaced = false;
+          typeOfTrade = "";
+        }
+      }
+    }
+
+    process.stdout.write(`${date.getDate()}-`);
     process.stdout.write(`${date.getMonth() + 1}-`);
     process.stdout.write(`${date.getFullYear()} `);
     process.stdout.write(
       `${date.getHours()}:${date.getMinutes()}:${date.getSeconds()} `
     );
-    process.stdout.write(`Period: ${period}s ${data.symbol}: ${data.price} `);
+    process.stdout.write(`Period: ${period}s ${pair}: ${lastPairPrice} `);
     process.stdout.write(`MA: ${currentMovingAverage}\n`);
   } catch (err) {
     console.log("### ERROR ###", err);
