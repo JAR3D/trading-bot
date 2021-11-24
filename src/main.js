@@ -1,163 +1,228 @@
-const events = require("events");
+const fs = require("fs");
 const { Command } = require("commander");
 
-const { syncTimer } = require("./helpers");
+const { syncTimer, formateDate } = require("./helpers");
 
 const { getPairPrice, getPairKLine } = require("./api");
+let {
+  appVars: {
+    options,
+    emitter,
+    pricesForMovingAverage,
+    chartIntervals,
+    getPairKLinePromise,
+    googleChart,
+    canSubmitAnotherRequest,
+    historicalData,
+    counterTillNPoints,
+    nextDataPoint,
+    lastPairPrice,
+    dataDate,
+    dataPoints,
+    numberOfSimilarLocalMaxes,
+    resistanceLine,
+    localMaxArray,
+    currentMovingAverage,
+    previousPrice,
+    typeOfTrade,
+    tradePlaced,
+    firstIndexResistanceLine,
+    thresholdSimilarLocalMaxes = 0.0000025,
+  },
+} = require("./vars");
 
-const emitter = new events.EventEmitter();
+options = parseArgs();
+pricesForMovingAverage = new Array(+options.points).fill(0);
 
-let historicalData,
-  nextDataPoint,
-  lastPairPrice,
-  currentValues,
-  getPairKLinePromise,
-  dataDate,
-  previousPrice,
-  tradePlaced,
-  typeOfTrade;
-let interval = "3m"; // 3 minutes
-let period = 2;
-let pair = "XMRBTC";
-let nPoints = 5;
-let currentMovingAverage = 0;
-let startTime = 0;
-let endTime = 0;
-const chartIntervals = [
-  "1m",
-  "3m",
-  "5m",
-  "15m",
-  "30m",
-  "1h",
-  "2h",
-  "4h",
-  "6h",
-  "8h",
-  "12h",
-  "1d",
-  "3d",
-  "1w",
-  "1M",
-];
-const prices = [];
-
-const options = parseArgs();
+// chart html
+let chartHtml = googleChart.trim();
 
 if (options.help) {
-  console.log("main.js -p <period> -i <interval> -c <currency> -n <points>");
+  console.log(
+    "main.js -p <period> -i <interval> -c <currency> -n <points> -s <startTime> -e <endTime>"
+  );
   process.exit();
 }
 
-if (options.period) {
-  period = options.period;
+if (options.interval && !chartIntervals.includes(options.interval)) {
+  console.log("binance requires intervals ", chartIntervals);
+  process.exit(2);
 }
 
-if (options.interval) {
-  if (chartIntervals.includes(options.interval)) {
-    interval = options.interval;
-  } else {
-    console.log("binance requires intervals ", chartIntervals);
-    process.exit(2);
-  }
-}
-
-if (options.currency) {
-  pair = options.currency;
-}
-
-if (options.points) {
-  nPoints = options.points;
-}
-
-if (options.start) {
-  startTime = options.start;
-}
-
-if (options.end) {
-  endTime = options.end;
-}
-
-for (let i = 0; i < nPoints; i++) {
-  prices.push(0);
-}
-
-if (startTime) {
+// getPairKLinePromise
+if (options.startTime) {
   getPairKLinePromise = getPairKLine({
-    symbol: pair,
-    interval: interval,
-    startTime: startTime,
-    endTime: endTime,
+    symbol: options.currency || "XMRBTC",
+    interval: options.interval || "3m",
+    startTime: options.startTime,
+    endTime: options.endTime,
   });
-  // .then(({ data }) => {
-  //   console.log(data);
-  //   historicalData = data;
-  //   // emitter.emit("timeEvent");
-  //   // const mainInterval = setInterval(() => {
-  //   //   emitter.emit("timeEvent");
-  //   // }, period * 1000);
-  // })
-  // .catch((err) => {
-  //   console.log("### ERROR ###", err);
-  // });
 }
 
+// wait for getPairKLinePromise then start emmiting
 Promise.all([getPairKLinePromise]).then((data) => {
-  historicalData = data[0].data;
+  historicalData = data[0].data || undefined; // only returns something if startTime was set
   while (true) {
-    emitter.emit("timeEvent");
+    if (canSubmitAnotherRequest) emitter.emit("timeEvent");
 
-    if (!startTime) {
+    if (!options.startTime) {
       syncTimer(2);
     }
   }
 });
-
 ////////////////////////////////////////////////////////////////
+
 emitter.on("timeEvent", async () => {
-  const date = new Date();
+  canSubmitAnotherRequest = false;
+  if (counterTillNPoints < parseInt(options.points)) {
+    counterTillNPoints++;
+  }
+  const dateNow = new Date();
   try {
-    if (startTime && historicalData) {
-      // console.log("### historicalData ###", historicalData);
+    if (options.startTime && historicalData.length > 0) {
       nextDataPoint = historicalData.shift();
-      // console.log("### nextDataPoint ###", nextDataPoint);
       if (!nextDataPoint) process.exit();
-      lastPairPrice = parseFloat(nextDataPoint[4]);
-    } else if (startTime && !historicalData) {
+      lastPairPrice = parseFloat(nextDataPoint[4]); // close price
+      const date = new Date(nextDataPoint[6]); // close time
+      //dataDate = formateDate(date);
+      dataDate = date;
+    } else if (options.startTime && historicalData.length === 0) {
+      for (let i = 0; i < dataPoints.length; i++) {
+        chartHtml += `
+            [new Date(${dataPoints[i]["date"]}), ${dataPoints[i]["price"]}, '${dataPoints[i]["label"]}', '${dataPoints[i]["desc"]}', ${dataPoints[i]["trend"]}],
+          `;
+      }
+
+      chartHtml += `
+                    ]);
+                    var options = {
+                      title: 'Price Chart',
+                      legend: { position: 'bottom' }, 
+                      explorer: { 
+                        actions: ['dragToZoom', 'rightClickToReset'],
+                        axis: 'horizontal',
+                        keepInBounds: true,
+                        maxZoomIn: 4.0
+                      },
+                    };
+                    var chart = new google.visualization.LineChart(document.getElementById('curve_chart'));
+                    chart.draw(data, options);
+                  }
+                </script>
+              </head>
+            <body>
+              <div id="curve_chart" style="width: 100%; height: 100%"></div>
+            </body>
+          </html>
+          `;
+      fs.writeFileSync("./output.html", chartHtml.trim());
       process.exit();
     } else {
       console.log("### waiting for request... ###");
-      const { data } = await getPairPrice(pair);
+      const { data } = await getPairPrice(options.currency || "XMRBTC");
       lastPairPrice = parseFloat(data.price);
+      dataDate = formateDate(dateNow);
     }
 
-    // console.log(data);
-    prices.push(lastPairPrice);
-    prices.shift();
-    currentMovingAverage = prices.reduce((a, b) => a + b, 0) / nPoints;
-    previousPrice = prices[prices.length - 2];
+    canSubmitAnotherRequest = true;
+
+    /*
+    Calculate the moving average
+     */
+    // at this point pricesForMovingAverage is an [0,0,0,0,0]
+    pricesForMovingAverage.push(lastPairPrice);
+    pricesForMovingAverage.shift();
+    currentMovingAverage =
+      pricesForMovingAverage.reduce((a, b) => a + b, 0) / counterTillNPoints;
+
+    dataPoints.push({
+      date: dataDate.getTime(),
+      price: lastPairPrice,
+      trend: resistanceLine || null,
+      label: "",
+      desc: "",
+    });
+
+    if (
+      dataPoints.length > 2 &&
+      dataPoints[dataPoints.length - 2]["price"] >
+        dataPoints[dataPoints.length - 1]["price"] &&
+      dataPoints[dataPoints.length - 2]["price"] >
+        dataPoints[dataPoints.length - 3]["price"]
+    ) {
+      // dataPoints[dataPoints.length - 2]["label"] = "MAX";
+      // dataPoints[dataPoints.length - 2]["desc"] = "This is a local maximum";
+
+      numberOfSimilarLocalMaxes = 0;
+      localMaxArray.forEach((oldMax) => {
+        if (
+          oldMax["price"] >
+            dataPoints[dataPoints.length - 2]["price"] -
+              thresholdSimilarLocalMaxes &&
+          oldMax["price"] <
+            dataPoints[dataPoints.length - 2]["price"] +
+              thresholdSimilarLocalMaxes
+        ) {
+          numberOfSimilarLocalMaxes++;
+
+          if (numberOfSimilarLocalMaxes === 1) {
+            firstIndexResistanceLine = oldMax["date"];
+          }
+        }
+      });
+
+      localMaxArray.push(dataPoints[dataPoints.length - 2]);
+
+      if (numberOfSimilarLocalMaxes >= 2) {
+        const dataPointsIndexRi = dataPoints.findIndex(
+          (element) => element["date"] === firstIndexResistanceLine
+        );
+        const dataPointsIndexRo = dataPoints.findIndex(
+          (element) =>
+            element["date"] === dataPoints[dataPoints.length - 2]["date"]
+        );
+
+        for (let i = dataPointsIndexRi + 1; i < dataPointsIndexRo; i++) {
+          if (dataPoints[i]["price"] > dataPoints[dataPointsIndexRo] + thresholdSimilarLocalMaxes) {
+            localMaxArray = [];
+            break;
+          }
+        }
+
+        if (localMaxArray.length !== 0) {
+          dataPoints[dataPointsIndexRi]["label"] = "ri";
+
+          dataPoints[dataPoints.length - 2]["trend"] =
+            dataPoints[dataPoints.length - 2]["price"];
+
+          dataPoints[dataPoints.length - 1]["trend"] =
+            dataPoints[dataPoints.length - 2]["price"];
+
+          dataPoints[dataPoints.length - 2]["label"] = "ro";
+
+          resistanceLine = dataPoints[dataPoints.length - 2]["price"];
+
+          localMaxArray = [];
+        }
+      }
+    }
+
+    previousPrice = pricesForMovingAverage[pricesForMovingAverage.length - 2];
 
     if (!tradePlaced) {
-      // console.log(
-      //   "### hit ###",
-      //   lastPairPrice,
-      //   currentMovingAverage,
-      //   previousPrice
-      // );
-
       if (
         lastPairPrice > currentMovingAverage &&
         lastPairPrice < previousPrice
       ) {
         console.log("### SELL ORDER ###");
-        tradePlaced = true;
+        //tradePlaced = true;
         typeOfTrade = "short";
       } else if (
         lastPairPrice < currentMovingAverage &&
         lastPairPrice > previousPrice
       ) {
         console.log("### BUY ORDER ###");
-        tradePlaced = true;
+        //tradePlaced = true;
         typeOfTrade = "long";
       }
     } else if (typeOfTrade === "short") {
@@ -165,22 +230,26 @@ emitter.on("timeEvent", async () => {
         console.log("### EXIT TRADE ###");
         tradePlaced = false;
         typeOfTrade = "";
-      } else if (typeOfTrade === "long") {
-        if (lastPairPrice > currentMovingAverage) {
-          console.log("### EXIT TRADE ###");
-          tradePlaced = false;
-          typeOfTrade = "";
-        }
+      }
+    } else if (typeOfTrade === "long") {
+      if (lastPairPrice > currentMovingAverage) {
+        console.log("### EXIT TRADE ###");
+        tradePlaced = false;
+        typeOfTrade = "";
       }
     }
 
-    process.stdout.write(`${date.getDate()}-`);
-    process.stdout.write(`${date.getMonth() + 1}-`);
-    process.stdout.write(`${date.getFullYear()} `);
+    process.stdout.write(`${dateNow.getDate()}-`);
+    process.stdout.write(`${dateNow.getMonth() + 1}-`);
+    process.stdout.write(`${dateNow.getFullYear()} `);
     process.stdout.write(
-      `${date.getHours()}:${date.getMinutes()}:${date.getSeconds()} `
+      `${dateNow.getHours()}:${dateNow.getMinutes()}:${dateNow.getSeconds()} `
     );
-    process.stdout.write(`Period: ${period}s ${pair}: ${lastPairPrice} `);
+    process.stdout.write(
+      `Period: ${options.period}s ${
+        options.currency || "XMRBTC"
+      }: ${lastPairPrice} `
+    );
     process.stdout.write(`MA: ${currentMovingAverage}\n`);
   } catch (err) {
     console.log("### ERROR ###", err);
@@ -196,8 +265,8 @@ function parseArgs() {
     .option("-c, --currency <type>", "to input a currency")
     .option("-n, --points <type>", "to input a number of points")
     .option("-i, --interval <type>", "to input a interval")
-    .option("-s, --start <type>", "to input a start time")
-    .option("-e, --end <type>", "to input a end time")
+    .option("-s, --start-time <type>", "to input a start time")
+    .option("-e, --end-time <type>", "to input a end time")
     .parse(process.argv);
 
   return program.opts();
