@@ -5,11 +5,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.appVars = void 0;
 const events_1 = __importDefault(require("events"));
-let tr;
 exports.appVars = {
-    options: undefined,
+    options: {},
     emitter: new events_1.default.EventEmitter(),
-    pricesForMovingAverage: undefined,
+    pricesForMovingAverage: [],
     chartIntervals: [
         "1m",
         "3m",
@@ -27,22 +26,22 @@ exports.appVars = {
         "1w",
         "1M",
     ],
-    getPairKLinePromise: undefined,
+    getPairKLinePromise: Promise.resolve({ data: undefined }),
     canSubmitAnotherRequest: true,
-    historicalData: undefined,
+    historicalData: [],
     // to calculate moving average
     counterTillNPoints: 0,
-    nextDataPoint: undefined,
-    lastPairPrice: undefined,
-    dataDate: undefined,
+    nextDataPoint: [],
+    lastPairPrice: -1,
+    dataDate: new Date(),
     dataPoints: [],
-    numberOfSimilarLocalMaxes: undefined,
-    resistanceLine: undefined,
+    numberOfSimilarLocalMaxes: -1,
+    resistanceLine: -1,
     localMaxArray: [],
-    currentMovingAverage: undefined,
-    previousPrice: undefined,
-    typeOfTrade: undefined,
+    currentMovingAverage: -1,
+    previousPrice: -1,
+    typeOfTrade: '',
     tradePlaced: false,
     firstIndexResistanceLine: undefined,
-    thresholdSimilarLocalMaxes: undefined
+    thresholdSimilarLocalMaxes: undefined,
 };

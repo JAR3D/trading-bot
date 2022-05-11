@@ -1,4 +1,4 @@
-const KrakenApi = require("./KrakenApi");
+const KrakenApi = require("./api/KrakenApi");
 
 const kraken = new KrakenApi();
 

@@ -1,6 +1,6 @@
 const BotStrategy = require('./BotStrategy');
 const Helper = require('./Helper');
-const KrakenApi = require('./KrakenApi');
+const KrakenApi = require('./api/KrakenApi');
 
 (async function init() {
   const strategy = new BotStrategy();

@@ -1,12 +1,13 @@
-const crypto = require("crypto");
-const fs = require("fs");
+import crypto from "crypto";
 
-const syncTimer = (time) => {
+import { ISyncTimer, IGetSignature, IFormatDate } from './interfaces';
+
+const syncTimer = ({ time }: ISyncTimer): void => {
   const future = Date.now() + time * 1000;
   while (future - Date.now() > 0) {}
 };
 
-const getSignature = (value = "") => {
+const getSignature = ({ value }: IGetSignature) => {
   //creating hmac object
   const hmac = crypto.createHmac(
     "sha256",
@@ -18,13 +19,13 @@ const getSignature = (value = "") => {
   return data.digest("hex");
 };
 
-const formateDate = (date) => {
+const formateDate = ({ date }: IFormatDate) => {
   return `${date.getFullYear()}-${
     date.getMonth() + 1
   }-${date.getDate()} ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`;
 };
 
-module.exports = {
+export {
   syncTimer,
   getSignature,
   formateDate,

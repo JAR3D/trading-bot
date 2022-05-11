@@ -1,41 +1,39 @@
-const fs = require("fs");
-const { Command } = require("commander");
+import fs from "fs";
+import { Command } from "commander";
 
-const { syncTimer, formateDate } = require("./helpers");
+import { syncTimer, formateDate } from "./helpers";
 
-const { getPairPrice, getPairKLine } = require("./api");
+import { getPairPrice, getPairKLine } from "./api";
+
+import { appVars } from "./vars";
+
 let {
-  appVars: {
-    options,
-    emitter,
-    pricesForMovingAverage,
-    chartIntervals,
-    getPairKLinePromise,
-    googleChart,
-    canSubmitAnotherRequest,
-    historicalData,
-    counterTillNPoints,
-    nextDataPoint,
-    lastPairPrice,
-    dataDate,
-    dataPoints,
-    numberOfSimilarLocalMaxes,
-    resistanceLine,
-    localMaxArray,
-    currentMovingAverage,
-    previousPrice,
-    typeOfTrade,
-    tradePlaced,
-    firstIndexResistanceLine,
-    thresholdSimilarLocalMaxes = 0.0000025,
-  },
-} = require("./vars");
+  options,
+  emitter,
+  pricesForMovingAverage,
+  chartIntervals,
+  getPairKLinePromise,
+  canSubmitAnotherRequest,
+  historicalData,
+  counterTillNPoints,
+  nextDataPoint,
+  lastPairPrice,
+  dataDate,
+  dataPoints,
+  numberOfSimilarLocalMaxes,
+  resistanceLine,
+  localMaxArray,
+  currentMovingAverage,
+  previousPrice,
+  typeOfTrade,
+  tradePlaced,
+  firstIndexResistanceLine,
+  thresholdSimilarLocalMaxes = 0.0000025,
+} = appVars;
 
 options = parseArgs();
-pricesForMovingAverage = new Array(+options.points).fill(0);
 
-// chart html
-let chartHtml = googleChart.trim();
+pricesForMovingAverage = new Array(+options.points).fill(0);
 
 if (options.help) {
   console.log(
@@ -61,12 +59,12 @@ if (options.startTime) {
 
 // wait for getPairKLinePromise then start emmiting
 Promise.all([getPairKLinePromise]).then((data) => {
-  historicalData = data[0].data || undefined; // only returns something if startTime was set
+  historicalData = data[0] ? data[0].data : undefined; // only returns something if startTime was set
   while (true) {
     if (canSubmitAnotherRequest) emitter.emit("timeEvent");
 
     if (!options.startTime) {
-      syncTimer(2);
+      syncTimer({ time: 2 });
     }
   }
 });
@@ -80,48 +78,19 @@ emitter.on("timeEvent", async () => {
   const dateNow = new Date();
   try {
     if (options.startTime && historicalData.length > 0) {
-      nextDataPoint = historicalData.shift();
+      nextDataPoint = historicalData.shift() as any[];
       if (!nextDataPoint) process.exit();
       lastPairPrice = parseFloat(nextDataPoint[4]); // close price
       const date = new Date(nextDataPoint[6]); // close time
       //dataDate = formateDate(date);
       dataDate = date;
     } else if (options.startTime && historicalData.length === 0) {
-      for (let i = 0; i < dataPoints.length; i++) {
-        chartHtml += `
-            [new Date(${dataPoints[i]["date"]}), ${dataPoints[i]["price"]}, '${dataPoints[i]["label"]}', '${dataPoints[i]["desc"]}', ${dataPoints[i]["trend"]}],
-          `;
-      }
-
-      chartHtml += `
-                    ]);
-                    var options = {
-                      title: 'Price Chart',
-                      legend: { position: 'bottom' }, 
-                      explorer: { 
-                        actions: ['dragToZoom', 'rightClickToReset'],
-                        axis: 'horizontal',
-                        keepInBounds: true,
-                        maxZoomIn: 4.0
-                      },
-                    };
-                    var chart = new google.visualization.LineChart(document.getElementById('curve_chart'));
-                    chart.draw(data, options);
-                  }
-                </script>
-              </head>
-            <body>
-              <div id="curve_chart" style="width: 100%; height: 100%"></div>
-            </body>
-          </html>
-          `;
-      fs.writeFileSync("./output.html", chartHtml.trim());
       process.exit();
     } else {
       console.log("### waiting for request... ###");
-      const { data } = await getPairPrice(options.currency || "XMRBTC");
+      const { data } = await getPairPrice(options.currency);
       lastPairPrice = parseFloat(data.price);
-      dataDate = formateDate(dateNow);
+      //dataDate = formateDate({ date: dateNow });
     }
 
     canSubmitAnotherRequest = true;
@@ -133,12 +102,12 @@ emitter.on("timeEvent", async () => {
     pricesForMovingAverage.push(lastPairPrice);
     pricesForMovingAverage.shift();
     currentMovingAverage =
-      pricesForMovingAverage.reduce((a, b) => a + b, 0) / counterTillNPoints;
+      pricesForMovingAverage.reduce((a, b) => a + b, 0) / pricesForMovingAverage.length;
 
     dataPoints.push({
       date: dataDate.getTime(),
       price: lastPairPrice,
-      trend: resistanceLine || null,
+      trend: resistanceLine,
       label: "",
       desc: "",
     });
@@ -183,7 +152,10 @@ emitter.on("timeEvent", async () => {
         );
 
         for (let i = dataPointsIndexRi + 1; i < dataPointsIndexRo; i++) {
-          if (dataPoints[i]["price"] > dataPoints[dataPointsIndexRo] + thresholdSimilarLocalMaxes) {
+          if (
+            dataPoints[i]["price"] >
+            dataPoints[dataPointsIndexRo]["price"] + thresholdSimilarLocalMaxes
+          ) {
             localMaxArray = [];
             break;
           }
