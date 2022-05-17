@@ -2,6 +2,7 @@
   "extends": "@tsconfig/node16/tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
+    "resolveJsonModule": true
   },
   "include": ["src/main.ts"],
   "exclude": ["node_modules"]

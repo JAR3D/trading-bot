@@ -61,8 +61,4 @@ export class BotChart {
       };
     });
   };
-
-  storeOptions = () => {
-
-  }
 }
