@@ -1,0 +1,25 @@
+{
+  "name": "trading-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/main.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "rm -rf dist && npx tsc --project tsconfig.json",
+    "dev": "npm run build && node dist/api/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@binance/connector": "^1.9.2",
+    "apexcharts": "^3.35.2",
+    "commander": "^7.1.0"
+  },
+  "devDependencies": {
+    "@tsconfig/node16": "^1.0.2",
+    "@types/node": "^16.11.10",
+    "prettier": "^2.4.1",
+    "typescript": "^4.5.2"
+  }
+}
