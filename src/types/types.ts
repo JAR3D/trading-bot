@@ -26,7 +26,7 @@ interface IAppVars {
   historicalData?: TKLineData;
   // to calculate moving average
   counterTillNPoints: number;
-  nextDataPoint: TDataItem;
+  nextDataPoint?: TDataItem;
   lastPairPrice?: number;
   dataPoints?: TDataPoints;
   numberOfSimilarLocalMaxes: number;

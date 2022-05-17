@@ -44,6 +44,7 @@ export class BotChart {
     chart.render().then(() => true);
   };
 
+  // for ApexCharts
   createSeriesItem = ({ name, type }: ICreateSeriesItem) => {
     return {
       name,

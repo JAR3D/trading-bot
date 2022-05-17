@@ -12,7 +12,6 @@ let {
   emitter,
   getPairKLinePromise,
   canSubmitAnotherRequest,
-  historicalData = [],
   nextDataPoint,
   lastPairPrice,
   currentMovingAverage,
@@ -38,8 +37,7 @@ if (!getPairKLinePromise) process.exit(2);
 // wait for getPairKLinePromise then start emitting
 let botIndicators: BotIndicators;
 getPairKLinePromise.then(({ data }) => {
-  historicalData = data;
-  botIndicators = new BotIndicators({historicalData, pointsForMa: options.pointsForMa});
+  botIndicators = new BotIndicators({historicalData: data, pointsForMa: options.pointsForMa});
   while (true) {
     if (canSubmitAnotherRequest) emitter.emit("timeEvent");
 
@@ -60,10 +58,15 @@ emitter.on("timeEvent", async () => {
 
   try {
     let date = undefined;
-    if (options.limit && historicalData && historicalData.length > 0) {
+    if (options.limit && botIndicators.stillExistsHistoricalData()) {
       lastPairPrice = parseFloat(nextDataPoint[4]); // close price
       date = new Date(nextDataPoint[0]); // open time
-    } else if (options.limit && historicalData && historicalData.length === 0) {
+    } else if (options.limit && !botIndicators.stillExistsHistoricalData()) {
+      // save datapoints for chart in a JSON format
+      const isDataSaved = botIndicators.saveData(dataPoints)
+      if(isDataSaved) {
+        console.log('\n\n\n\n\n###: ', 'Data is saved!...');
+      };
       process.exit();
     } else {
       console.log("### waiting for request... ###");

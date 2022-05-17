@@ -1,4 +1,5 @@
-import { TKLineData } from "../../api/types";
+import { TDataItem, TKLineData } from "../../api/types";
+import { TDataPoints } from "../bot-chart/types";
 
 interface IBotIndicators {
   historicalData: TKLineData;
@@ -7,6 +8,8 @@ interface IBotIndicators {
 
 interface CBotIndicators {
   getCurrentMovAverage: () => number;
+  stillExistsHistoricalData: () => boolean;
+  saveData: (dataPoints: TDataPoints) => void;
 }
 
 export {
